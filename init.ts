@@ -1,0 +1,174 @@
+import { readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
+import stripAnsi from "strip-ansi";
+import { glob } from "tinyglobby";
+
+const TS_REPO_DIR = process.env.TS_REPO_DIR ?? "../TypeScript";
+const OUTPUT_DIR = process.env.OUTPUT_DIR ?? "./src/lib";
+const DEBUG = process.env.DEBUG ?? false;
+
+//
+// First, collect all `.errors.txt` files from `tests/baselines/reference`.
+// At this point, snapshots for tests other than `compiler` and `conformance` are also included.
+//
+console.log("🍀", "Collecting all `.errors.txt` files from `tests/baselines/reference`...");
+// NOTE: Some `.errors.txt` files are located in subdirectories, but we do not need them
+const allErrorsTextPaths = await glob("*.errors.txt", {
+  cwd: `${TS_REPO_DIR}/tests/baselines/reference`,
+});
+console.log(`Found ${allErrorsTextPaths.length} files.`);
+
+//
+// Each test case refers to a `.errors.txt` file with the same name as the test file.
+// The `.errors.txt` file may be generated multiple times depending on the variations of `@option`.
+//
+const errorsMap = new Map<string, string[]>();
+for (const errorsTextPath of allErrorsTextPaths) {
+  const testId = errorsTextPathToTestId(errorsTextPath);
+
+  const paths = errorsMap.get(testId) ?? [];
+  paths.push(errorsTextPath);
+
+  errorsMap.set(testId, paths);
+}
+
+//
+// Now, collect all test files from `tests/cases/compiler` and `tests/cases/conformance`.
+//
+console.log("🍀", "Cllecting all test files from `tests/cases/compiler|conformance`...");
+const allTestPaths = await glob([`compiler/**/*`, `conformance/**/*`], {
+  cwd: `${TS_REPO_DIR}/tests/cases`,
+});
+console.log(`Found ${allTestPaths.length} files.`);
+
+//
+// If the test is expected to produce an error, a `.errors.txt` file should exist.
+// Keep `.errors.txt` files that have a corresponding test file.
+//
+console.log("🍀", "Checking each test file has `.errors.txt` files...");
+const targetErrorsTextPaths = new Set<string>();
+for (const testPath of allTestPaths) {
+  const testId = testPathToTestId(testPath);
+
+  const errorsTextPaths = errorsMap.get(testId);
+  // These are "Expect to parse" cases
+  if (!errorsTextPaths) continue;
+
+  for (const errorsTextPath of errorsTextPaths) targetErrorsTextPaths.add(errorsTextPath);
+}
+console.log(`Found ${targetErrorsTextPaths.size} \`.errors.txt\` files to be checked.`);
+
+//
+// Finally, extract diagnostic error codes from the target `.errors.txt` files.
+// Store error codes with the paths to the `.errors.txt` files they were found in.
+//
+console.log("🍀", "Extractiing diagnostic error codes from target `.errors.txt` files...");
+const errorDiagnosticsMap = new Map<number, string[]>();
+for (const errorsTextPath of targetErrorsTextPaths) {
+  let errorsText: string;
+  try {
+    errorsText = await readFile(
+      `${TS_REPO_DIR}/tests/baselines/reference/${errorsTextPath}`,
+      "utf8",
+    );
+  } catch {
+    console.error("💥", `Failed to read file: ${errorsTextPath}`);
+    process.exit(1);
+  }
+
+  const errorCodes = extractErrorCodes(errorsText);
+  for (const errorCode of errorCodes) {
+    const errorsTextPaths = errorDiagnosticsMap.get(errorCode) ?? [];
+    errorsTextPaths.push(errorsTextPath);
+
+    errorDiagnosticsMap.set(errorCode, errorsTextPaths);
+  }
+}
+console.log(
+  `Extracted ${errorDiagnosticsMap.size} unique diagnostic error codes from target \`.errors.txt\` files.`,
+);
+
+//
+// Print the sorted error codes as `.txt` format.
+//
+console.log("🍀", "Writing the error codes to the output file...");
+const sortedErrorDiagnosticsMap = new Map(
+  Array.from(errorDiagnosticsMap.entries()).sort(([a], [b]) => a - b),
+);
+let output = "";
+let outputFile = "diagnostic-error-codes";
+if (DEBUG) {
+  // `.json` format for verbose output
+  output = JSON.stringify(
+    Object.fromEntries(
+      Array.from(sortedErrorDiagnosticsMap.entries()).map(([code, paths]) => [code, paths.sort()]),
+    ),
+    null,
+    2,
+  );
+  outputFile += ".json";
+} else {
+  // `.txt` format to avoid trailing commas
+  output = Array.from(sortedErrorDiagnosticsMap.keys()).join("\n");
+  outputFile += ".txt";
+}
+const outputPath = `${OUTPUT_DIR}/${outputFile}`;
+await writeFile(outputPath, output, "utf8");
+console.log(`Saved the output to ${outputPath}`);
+
+// ---
+
+/**
+ * Extracts a test ID from a given test path.
+ * Path can be like:
+ * - compiler/jsxContainsOnlyTriviaWhiteSpacesNotCountedAsChild.tsx
+ * - conformance/parser/ecmascript5/Statements/BreakStatements/parser_breakTarget2.ts
+ * - conformance/es6/decorators/class/property/decoratorOnClassProperty1.es6.ts
+ * */
+function testPathToTestId(testPath: string): string {
+  const basename = path.basename(testPath);
+  const [testId] = basename.split(path.extname(basename));
+  return testId;
+}
+
+/**
+ * Extracts a test ID from a given text path.
+ * Path can be like:
+ * - importDeferTypeConflict2.errors.txt
+ * - asyncGeneratorParameterEvaluation(target=es2018).errors.txt
+ * - project/maprootUrlModuleSimpleSpecifyOutputFile/node/maprootUrlModuleSimpleSpecifyOutputFile.errors.txt
+ */
+function errorsTextPathToTestId(errorsTextPath: string): string {
+  const basename = path.basename(errorsTextPath);
+  const [testIdPart] = basename.split(".errors.txt");
+  const [testId] = testIdPart.split("(");
+  return testId;
+}
+
+/**
+ * Extracts error diagnostic codes from the content of `.errors.txt` file.
+ * The file is expected to contain a summary and details of errors.
+ *
+ * The summary contains lines like:
+ * - ArrowFunction3.ts(1,12): error TS1005: ',' expected.
+ * - error TS2688: Cannot find type definition file for 'react'.
+ * The details contain lines like:
+ * - !!! error TS1005: '}' expected.
+ */
+function extractErrorCodes(errorsText: string): Set<number> {
+  const errorDiagnosticsCodes = new Set<number>();
+
+  for (const line of stripAnsi(errorsText).split("\r\n")) {
+    const [, codePart] = line.split("error TS");
+    if (codePart) {
+      const [code] = codePart.split(":");
+      if (code) {
+        // These are inlined error codes, just skip them
+        if (["-1", "0", "9999"].includes(code)) continue;
+        errorDiagnosticsCodes.add(Number(code));
+      }
+    }
+  }
+
+  return errorDiagnosticsCodes;
+}
