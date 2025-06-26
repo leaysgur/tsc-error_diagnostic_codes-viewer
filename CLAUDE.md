@@ -19,7 +19,12 @@ TS_REPO_DIR=../TypeScript npm run dev
 npm run build
 npm run preview
 npm run check
+npm run check:watch
 npm run format
+
+# TypeScript and Svelte checking
+npm run check          # One-time check
+npm run check:watch    # Watch mode
 ```
 
 ## Architecture
@@ -40,10 +45,11 @@ npm run format
 
 ### Key Files
 
-- `/src/routes/+page.svelte` - Main UI component with state management
-- `/src/routes/api/file/+server.ts` - File serving API with path validation
-- `/src/lib/diagnostic-error-codes.json` - Generated error code mappings
-- `/init.ts` - Data extraction script from TypeScript test suite
+- `/src/routes/+page.svelte` - Main UI component with state management and CSS Grid layout
+- `/src/routes/api/file/+server.ts` - File serving API with path validation and ANSI stripping
+- `/src/lib/diagnostic-error-codes.json` - Generated error code mappings (created by init.ts)
+- `/src/lib/highlight.ts` - CSS Custom Highlight API for error code highlighting in content
+- `/init.ts` - Data extraction script that processes TypeScript test suite baseline files
 
 ## Environment Requirements
 
@@ -53,5 +59,14 @@ This tool requires a local TypeScript repository clone alongside this project. T
 
 - Error codes and file lists use `mouseenter` events for hover-based selection
 - No URL manipulation - pure client-side state management
-- File content loads dynamically via API calls
+- File content loads dynamically via API calls with AbortController for cleanup
 - CSS Grid layout with overflow handling for large datasets
+- Checkbox-based review tracking with localStorage persistence
+- Error code highlighting in file content using CSS Custom Highlight API
+
+## State Management
+
+- Svelte 5 reactive state with `$state()` and `$derived()`
+- Range/code/file selection cascade automatically
+- Review status tracked in localStorage and managed with Set data structure
+- File content fetched on demand with proper cleanup using AbortController

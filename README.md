@@ -1,5 +1,7 @@
 # tsc-diagnostics_error_codes-viewer
 
+![](./cover.webp)
+
 ## Development
 
 ```sh
