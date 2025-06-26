@@ -1,85 +1,101 @@
 <script lang="ts">
-  import { page } from "$app/stores";
-  import { goto } from "$app/navigation";
   import { browser } from "$app/environment";
   import diagnosticCodes from "$lib/diagnostic-error-codes.json";
 
   let selectedCode = $state("");
   let selectedFilePath = $state("");
-  let fileContent = $state("");
-  let hoveredFilePath = $state("");
+  let reviewedCodes = $state(new Set<string>());
 
   const codes = Object.keys(diagnosticCodes);
 
-  async function loadFileContent(filePath: string) {
-    if (!browser || !filePath) return;
-
-    try {
-      const response = await fetch(`/api/file?path=${encodeURIComponent(filePath)}`);
-      if (response.ok) {
-        fileContent = await response.text();
-      } else {
-        fileContent = "Error loading file";
+  // Load reviewed codes from localStorage
+  $effect(() => {
+    if (browser) {
+      const saved = localStorage.getItem("reviewed-codes");
+      if (saved) {
+        reviewedCodes = new Set(JSON.parse(saved));
       }
-    } catch (error) {
-      fileContent = "Error loading file";
+    }
+  });
+
+  // Save reviewed codes to localStorage
+  function saveReviewedCodes() {
+    if (browser) {
+      localStorage.setItem("reviewed-codes", JSON.stringify([...reviewedCodes]));
     }
   }
 
-  function handleFileHover(filePath: string) {
-    hoveredFilePath = filePath;
-    loadFileContent(filePath);
+  // Toggle review status
+  function toggleReviewStatus(code: string) {
+    if (reviewedCodes.has(code)) {
+      reviewedCodes.delete(code);
+    } else {
+      reviewedCodes.add(code);
+    }
+    reviewedCodes = new Set(reviewedCodes); // Trigger reactivity
+    saveReviewedCodes();
   }
 
-  function handleCodeSelect(code: string) {
-    selectedCode = code;
-    selectedFilePath = "";
+  // Sort codes: unreviewed first, then reviewed
+  const sortedCodes = $derived(
+    [...codes].sort((a, b) => {
+      const aReviewed = reviewedCodes.has(a);
+      const bReviewed = reviewedCodes.has(b);
+
+      if (aReviewed && !bReviewed) return 1;
+      if (!aReviewed && bReviewed) return -1;
+      return parseInt(a) - parseInt(b);
+    }),
+  );
+
+  const fileContentPromise = $derived(() => {
+    if (!browser || !selectedFilePath) return null;
+    
+    return fetch(`/api/file?path=${encodeURIComponent(selectedFilePath)}`)
+      .then(response => {
+        if (response.ok) {
+          return response.text();
+        } else {
+          throw new Error("Error loading file");
+        }
+      })
+      .catch(() => "Error loading file");
+  });
+
+  function handleFileHover(filePath: string) {
+    selectedFilePath = filePath;
   }
 
   function handleCodeHover(code: string) {
     selectedCode = code;
-    selectedFilePath = "";
-    const files = diagnosticCodes[code];
+    const files = (diagnosticCodes as Record<string, string[]>)[code];
     if (files && files.length > 0) {
       selectedFilePath = files[0];
-      loadFileContent(files[0]);
+    } else {
+      selectedFilePath = "";
     }
   }
 
-  function handleFileSelect(filePath: string) {
-    selectedFilePath = filePath;
-  }
-
-  $effect(() => {
-    if (browser) {
-      const urlCode = $page.url.searchParams.get("code");
-      const urlFile = $page.url.searchParams.get("file");
-
-      if (urlCode && codes.includes(urlCode)) {
-        selectedCode = urlCode;
-      }
-
-      if (urlFile) {
-        selectedFilePath = decodeURIComponent(urlFile);
-        loadFileContent(selectedFilePath);
-      }
-    }
-  });
 </script>
 
 <div class="container">
   <div class="column codes-column">
     <h2>Error Codes</h2>
     <div class="list">
-      {#each codes as code}
-        <div
+      {#each sortedCodes as code (code)}
+        <label
           class="item"
           class:selected={selectedCode === code}
+          class:reviewed={reviewedCodes.has(code)}
           onmouseenter={() => handleCodeHover(code)}
-          onclick={() => handleCodeSelect(code)}
         >
-          {code}
-        </div>
+          <input
+            type="checkbox"
+            checked={reviewedCodes.has(code)}
+            onchange={() => toggleReviewStatus(code)}
+          />
+          <span class="code-text">{code}</span>
+        </label>
       {/each}
     </div>
   </div>
@@ -88,15 +104,13 @@
     <h2>Files for {selectedCode || "Select a code"}</h2>
     <div class="list">
       {#if selectedCode}
-        {#each diagnosticCodes[selectedCode] as filePath}
+        {#each (diagnosticCodes as Record<string, string[]>)[selectedCode] as filePath}
           <div
             class="item"
             class:selected={selectedFilePath === filePath}
-            class:hovered={hoveredFilePath === filePath}
-            onmouseenter={() => {
-              handleFileHover(filePath);
-              handleFileSelect(filePath);
-            }}
+            onmouseenter={() => handleFileHover(filePath)}
+            role="button"
+            tabindex="0"
           >
             {filePath}
           </div>
@@ -108,10 +122,14 @@
   <div class="column content-column">
     <h2>Content</h2>
     <div class="content">
-      {#if fileContent}
-        <pre>{fileContent}</pre>
-      {:else if selectedFilePath || hoveredFilePath}
-        <p>Loading...</p>
+      {#if fileContentPromise()}
+        {#await fileContentPromise()}
+          <p>Loading...</p>
+        {:then content}
+          <pre>{content}</pre>
+        {:catch error}
+          <p>Error loading file</p>
+        {/await}
       {:else}
         <p>Select a file to view its content</p>
       {/if}
@@ -124,6 +142,8 @@
     margin: 0;
     padding: 0;
     overflow: hidden;
+    background-color: #1e1e1e;
+    color: #d4d4d4;
   }
 
   .container {
@@ -138,19 +158,21 @@
   }
 
   .column {
-    border: 1px solid #ddd;
+    border: 1px solid #3e3e3e;
     border-radius: 4px;
     padding: 0.5rem;
     display: flex;
     flex-direction: column;
     overflow: hidden;
     min-height: 0;
+    background-color: #252526;
   }
 
   h2 {
     margin: 0 0 0.5rem 0;
     font-size: 1rem;
     flex-shrink: 0;
+    color: #cccccc;
   }
 
   .list {
@@ -165,34 +187,54 @@
     border-radius: 2px;
     margin-bottom: 1px;
     word-break: break-all;
+    color: #d4d4d4;
   }
 
   .codes-column .item {
     font-family: "Courier New", monospace;
-    text-align: center;
     font-weight: bold;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.25rem;
+  }
+
+  .codes-column .item.reviewed {
+    opacity: 0.6;
+  }
+
+  .codes-column .item input[type="checkbox"] {
+    margin: 0;
+    flex-shrink: 0;
+  }
+
+  .codes-column .item .code-text {
+    flex: 1;
+    text-align: center;
   }
 
   .item:hover {
-    background-color: #f0f0f0;
+    background-color: #2a2d2e;
   }
 
-  .item.hovered {
-    background-color: #e6f3ff;
-  }
 
   .item.selected {
-    background-color: #007acc;
+    background-color: #0e639c;
     color: white;
   }
 
   .content {
     flex: 1;
     overflow: auto;
-    background-color: #f8f8f8;
+    background-color: #1e1e1e;
     padding: 0.5rem;
     border-radius: 2px;
     min-height: 0;
+    border: 1px solid #3e3e3e;
+  }
+
+  .content p {
+    color: #969696;
   }
 
   pre {
@@ -202,5 +244,6 @@
     font-family: "Courier New", monospace;
     font-size: 0.9rem;
     line-height: 1.4;
+    color: #d4d4d4;
   }
 </style>
