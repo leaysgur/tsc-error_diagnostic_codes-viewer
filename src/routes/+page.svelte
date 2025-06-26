@@ -6,43 +6,47 @@
   let selectedRange = $state("");
   let selectedCode = $state("");
   let selectedFilePath = $state("");
+
   let reviewedCodes = $state(new Set<string>());
 
-  const codes = Object.keys(diagnosticCodes);
+  // Load reviewed codes from localStorage
+  $effect(() => {
+    if (!browser) return;
+    const saved = localStorage.getItem("reviewed-codes");
+    if (!saved) return;
+    reviewedCodes = new Set(JSON.parse(saved));
+  });
 
   // Group codes by 1000s
   const ranges = $derived.by(() => {
     const rangeMap = new Map<string, string[]>();
-    codes.forEach((code) => {
+    // Already sorted
+    for (const code of Object.keys(diagnosticCodes)) {
       const num = parseInt(code);
       const range = `${Math.floor(num / 1000)}xxx`;
-      if (!rangeMap.has(range)) {
-        rangeMap.set(range, []);
-      }
+
+      if (!rangeMap.has(range)) rangeMap.set(range, []);
       rangeMap.get(range)!.push(code);
-    });
-    return Array.from(rangeMap.entries()).sort((a, b) => {
-      const aNum = parseInt(a[0]);
-      const bNum = parseInt(b[0]);
-      return aNum - bNum;
-    });
+    }
+
+    return rangeMap;
   });
 
   // Filter codes by selected range
-  const filteredCodes = $derived(() => {
+  const filteredCodes = $derived.by(() => {
     if (!selectedRange) return [];
-    const rangeData = ranges.find(([range]) => range === selectedRange);
-    return rangeData ? rangeData[1] : [];
+    return ranges.get(selectedRange) ?? [];
   });
 
-  // Load reviewed codes from localStorage
+  // Get files for selected code
+  const selectedCodeFiles = $derived.by(() => {
+    if (!selectedCode) return [];
+    return (diagnosticCodes as Record<string, string[]>)[selectedCode] ?? [];
+  });
+
+  // Auto-select first file when code changes
   $effect(() => {
-    if (browser) {
-      const saved = localStorage.getItem("reviewed-codes");
-      if (saved) {
-        reviewedCodes = new Set(JSON.parse(saved));
-      }
-    }
+    selectedFilePath = selectedCodeFiles[0];
   });
 
   // Toggle review status
@@ -58,7 +62,7 @@
 
   // Sort codes: unreviewed first, then reviewed
   const sortedCodes = $derived(
-    [...filteredCodes()].sort((a, b) => {
+    filteredCodes.toSorted((a, b) => {
       const aReviewed = reviewedCodes.has(a);
       const bReviewed = reviewedCodes.has(b);
 
@@ -68,57 +72,29 @@
     }),
   );
 
-  const fileContentPromise = $derived(() => {
+  let ac = new AbortController();
+  const fileContentPromise = $derived.by(() => {
     if (!browser || !selectedFilePath) return null;
 
-    return fetch(`/api/file?path=${encodeURIComponent(selectedFilePath)}`)
-      .then((response) => {
-        if (response.ok) {
-          return response.text();
-        } else {
-          throw new Error("Error loading file");
-        }
-      })
-      .catch(() => "Error loading file");
+    ac.abort();
+    ac = new AbortController();
+    return fetch(`/api/file?path=${encodeURIComponent(selectedFilePath)}`, {
+      signal: ac.signal,
+    }).then((r) => r.text());
   });
 
   function handleRangeHover(range: string) {
     selectedRange = range;
-    const rangeData = ranges.find(([r]) => r === range);
-    if (rangeData && rangeData[1].length > 0) {
-      const sortedRangeCodes = [...rangeData[1]].sort((a, b) => {
-        const aReviewed = reviewedCodes.has(a);
-        const bReviewed = reviewedCodes.has(b);
-
-        if (aReviewed && !bReviewed) return 1;
-        if (!aReviewed && bReviewed) return -1;
-        return parseInt(a) - parseInt(b);
-      });
-      selectedCode = sortedRangeCodes[0];
-      const files = (diagnosticCodes as Record<string, string[]>)[sortedRangeCodes[0]];
-      if (files && files.length > 0) {
-        selectedFilePath = files[0];
-      } else {
-        selectedFilePath = "";
-      }
-    } else {
-      selectedCode = "";
-      selectedFilePath = "";
-    }
-  }
-
-  function handleFileHover(filePath: string) {
-    selectedFilePath = filePath;
+    const rangeData = ranges.get(range) ?? [];
+    selectedCode = rangeData.length > 0 ? rangeData[0] : "";
   }
 
   function handleCodeHover(code: string) {
     selectedCode = code;
-    const files = (diagnosticCodes as Record<string, string[]>)[code];
-    if (files && files.length > 0) {
-      selectedFilePath = files[0];
-    } else {
-      selectedFilePath = "";
-    }
+  }
+
+  function handleFileHover(filePath: string) {
+    selectedFilePath = filePath;
   }
 </script>
 
@@ -164,27 +140,25 @@
   <div class="column files-column">
     <h2>Files: <span class="dynamic-text">{selectedCode || "Select a code"}</span></h2>
     <div class="list">
-      {#if selectedCode}
-        {#each (diagnosticCodes as Record<string, string[]>)[selectedCode] as filePath}
-          <div
-            class="item"
-            class:selected={selectedFilePath === filePath}
-            onmouseenter={() => handleFileHover(filePath)}
-            role="button"
-            tabindex="0"
-          >
-            {filePath}
-          </div>
-        {/each}
-      {/if}
+      {#each selectedCodeFiles as filePath}
+        <div
+          class="item"
+          class:selected={selectedFilePath === filePath}
+          onmouseenter={() => handleFileHover(filePath)}
+          role="button"
+          tabindex="0"
+        >
+          {filePath}
+        </div>
+      {/each}
     </div>
   </div>
 
   <div class="column content-column">
     <h2>Content: <span class="dynamic-text">{selectedFilePath || "Select a file"}</span></h2>
     <div class="content">
-      {#if fileContentPromise()}
-        {#await fileContentPromise()}
+      {#if fileContentPromise}
+        {#await fileContentPromise}
           <p>Loading...</p>
         {:then content}
           <pre {@attach highlightErrorCode(selectedCode)}>{content}</pre>
