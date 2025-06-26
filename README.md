@@ -5,7 +5,9 @@
 ## Development
 
 ```sh
+bun i
+
 DEBUG=1 TS_REPO_DIR=../TypeScript OUTPUT_DIR=./src/lib bun ./init.ts
 
-TS_REPO_DIR=../TypeScript npm run dev
+TS_REPO_DIR=../TypeScript bun dev
 ```
