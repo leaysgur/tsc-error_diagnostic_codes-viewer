@@ -98,6 +98,11 @@
   }
 </script>
 
+<header class="header">
+  <h1>TSC Error Diagnostic Codes Viewer</h1>
+  <p>Browse error codes extracted from TypeScript `compiler` and `conformance` tests</p>
+</header>
+
 <div class="container">
   <div class="column ranges-column">
     <h2>Ranges</h2>
@@ -117,7 +122,7 @@
   </div>
 
   <div class="column codes-column">
-    <h2>Codes: <span class="dynamic-text">{selectedRange || "Select a range"}</span></h2>
+    <h2>Codes: <span class="dynamic-text">{selectedRange || "-"}</span></h2>
     <div class="list">
       {#each sortedCodes as code (code)}
         <label
@@ -138,7 +143,7 @@
   </div>
 
   <div class="column files-column">
-    <h2>Files: <span class="dynamic-text">{selectedCode || "Select a code"}</span></h2>
+    <h2>Files: <span class="dynamic-text">{selectedCode || "-"}</span></h2>
     <div class="list">
       {#each selectedCodeFiles as filePath}
         <div
@@ -155,7 +160,7 @@
   </div>
 
   <div class="column content-column">
-    <h2>Content: <span class="dynamic-text">{selectedFilePath || "Select a file"}</span></h2>
+    <h2>Content: <span class="dynamic-text">{selectedFilePath || "-"}</span></h2>
     <div class="content">
       {#if fileContentPromise}
         {#await fileContentPromise}
@@ -171,6 +176,10 @@
     </div>
   </div>
 </div>
+
+<svelte:head>
+  <title>TSC Error Diagnostic Codes Viewer</title>
+</svelte:head>
 
 <style>
   :root {
@@ -210,6 +219,10 @@
     --gap: 0.5rem;
   }
 
+  ::highlight(error-code) {
+    background-color: var(--highlight-bg);
+  }
+
   :global(body) {
     margin: 0;
     padding: 0;
@@ -217,19 +230,38 @@
     background-color: var(--bg-primary);
     color: var(--text-primary);
     font-family: var(--font-mono);
+    height: 100vh;
+    display: grid;
+    grid-template-rows: auto 1fr;
   }
 
-  ::highlight(error-code) {
-    background-color: var(--highlight-bg);
+  .header {
+    background-color: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-color);
+    padding: var(--spacing-xs) var(--spacing-md);
+    text-align: left;
+  }
+
+  .header h1 {
+    margin: 0;
+    font-size: 1rem;
+    color: var(--text-primary);
+    display: inline;
+  }
+
+  .header p {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    display: inline;
+    margin-left: var(--spacing-sm);
   }
 
   .container {
     display: grid;
-    grid-template-columns: 120px 160px 1fr 2fr;
-    height: 100vh;
-    width: 100vw;
+    grid-template-columns: 120px 140px 1fr 2fr;
     gap: var(--gap);
-    padding: var(--spacing-sm);
+    padding: var(--spacing-md) var(--spacing-sm);
     box-sizing: border-box;
     overflow: hidden;
   }
