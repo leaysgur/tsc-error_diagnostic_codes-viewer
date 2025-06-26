@@ -25,18 +25,21 @@ npm run format
 ## Architecture
 
 ### Data Generation Pipeline
+
 - `init.ts` scans TypeScript repo's `tests/baselines/reference/*.errors.txt` files
 - Extracts diagnostic error codes using regex pattern matching
 - Generates `src/lib/diagnostic-error-codes.json` mapping codes to files
 - Requires `TS_REPO_DIR` environment variable pointing to TypeScript repository
 
 ### Runtime Architecture
+
 - **SvelteKit 2 + Svelte 5** frontend with reactive state management
 - **3-column layout**: Error codes (120px) | Files (1fr) | Content (2fr)
 - **API endpoint** (`/api/file`) serves `.errors.txt` file contents from local filesystem
 - **Mouse-driven interaction**: Hover-based navigation, no clicking required
 
 ### Key Files
+
 - `/src/routes/+page.svelte` - Main UI component with state management
 - `/src/routes/api/file/+server.ts` - File serving API with path validation
 - `/src/lib/diagnostic-error-codes.json` - Generated error code mappings
