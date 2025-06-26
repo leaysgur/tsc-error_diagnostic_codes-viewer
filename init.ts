@@ -109,7 +109,12 @@ if (DEBUG) {
   outputFile += ".json";
 } else {
   // `.txt` format to avoid trailing commas
-  output = Array.from(sortedErrorDiagnosticsMap.keys()).join("\n");
+  output = [
+    "If there are any changes to this list, determine whether the related error should be supported by OXC or NOT.",
+    "And if necessary, add it to the `NOT_SUPPORTED_ERROR_CODES` list for TS coverage tests.",
+    "---",
+    ...sortedErrorDiagnosticsMap.keys(),
+  ].join("\n");
   outputFile += ".txt";
 }
 const outputPath = `${OUTPUT_DIR}/${outputFile}`;
