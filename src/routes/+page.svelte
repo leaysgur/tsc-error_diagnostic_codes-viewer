@@ -1,6 +1,7 @@
 <script lang="ts">
   import { browser } from "$app/environment";
   import diagnosticCodes from "$lib/diagnostic-error-codes.json";
+  import { highlightErrorCode } from "$lib/highlight.js";
 
   let selectedRange = $state("");
   let selectedCode = $state("");
@@ -186,7 +187,7 @@
         {#await fileContentPromise()}
           <p>Loading...</p>
         {:then content}
-          <pre>{content}</pre>
+          <pre {@attach highlightErrorCode(selectedCode)}>{content}</pre>
         {:catch error}
           <p>{error}</p>
         {/await}
@@ -210,6 +211,10 @@
     --hover-bg: #2a2d2e;
     --hover-blue: #094771;
     --selected-bg: #7a8a9a;
+    --selected-text: #ffffff;
+    --highlight-bg: #ffd70080;
+    --highlight-text: #1a1a1a;
+    --highlight-border: #ffd700;
 
     /* Fonts */
     --font-mono: "Courier New", monospace;
@@ -238,6 +243,10 @@
     background-color: var(--bg-primary);
     color: var(--text-primary);
     font-family: var(--font-mono);
+  }
+
+  ::highlight(error-code) {
+    background-color: var(--highlight-bg);
   }
 
   .container {
@@ -323,7 +332,7 @@
 
   .item.selected {
     background-color: var(--selected-bg);
-    color: white;
+    color: var(--selected-text);
   }
 
   .content {
