@@ -7,14 +7,14 @@
   let selectedCode = $state("");
   let selectedFilePath = $state("");
 
-  let reviewedCodes = $state(new Set<string>());
+  let reviewedCodes = $state(new Map<string, "yes" | "no">());
 
   // Load reviewed codes from localStorage
   $effect(() => {
     if (!browser) return;
     const saved = localStorage.getItem("reviewed-codes");
     if (!saved) return;
-    reviewedCodes = new Set(JSON.parse(saved));
+    reviewedCodes = new Map(JSON.parse(saved));
   });
 
   // Group codes by 1000s
@@ -49,14 +49,10 @@
     selectedFilePath = selectedCodeFiles[0];
   });
 
-  // Toggle review status
-  function toggleReviewStatus(code: string) {
-    if (reviewedCodes.has(code)) {
-      reviewedCodes.delete(code);
-    } else {
-      reviewedCodes.add(code);
-    }
-    reviewedCodes = new Set(reviewedCodes); // Trigger reactivity
+  // Set review status
+  function setReviewStatus(code: string, status: "yes" | "no") {
+    reviewedCodes.set(code, status);
+    reviewedCodes = new Map(reviewedCodes); // Trigger reactivity
     localStorage.setItem("reviewed-codes", JSON.stringify([...reviewedCodes]));
   }
 
@@ -125,19 +121,38 @@
     <h2>Codes: <span class="dynamic-text">{selectedRange || "-"}</span></h2>
     <div class="list">
       {#each sortedCodes as code (code)}
-        <label
+        <div
           class="item"
           class:selected={selectedCode === code}
           class:reviewed={reviewedCodes.has(code)}
           onmouseenter={() => handleCodeHover(code)}
+          role="button"
+          tabindex="0"
         >
-          <input
-            type="checkbox"
-            checked={reviewedCodes.has(code)}
-            onchange={() => toggleReviewStatus(code)}
-          />
+          <div class="radio-group" title="Can support?">
+            <label class="radio-label">
+              <input
+                type="radio"
+                name="review-{code}"
+                value="yes"
+                checked={reviewedCodes.get(code) === "yes"}
+                onchange={() => setReviewStatus(code, "yes")}
+              />
+              Y
+            </label>
+            <label class="radio-label">
+              <input
+                type="radio"
+                name="review-{code}"
+                value="no"
+                checked={reviewedCodes.get(code) === "no"}
+                onchange={() => setReviewStatus(code, "no")}
+              />
+              N
+            </label>
+          </div>
           <span class="code-text">{code}</span>
-        </label>
+        </div>
       {/each}
     </div>
   </div>
@@ -259,7 +274,7 @@
 
   .container {
     display: grid;
-    grid-template-columns: 120px 140px 1fr 2fr;
+    grid-template-columns: 120px 160px 1fr 2fr;
     gap: var(--gap);
     padding: var(--spacing-md) var(--spacing-sm);
     box-sizing: border-box;
@@ -322,14 +337,29 @@
     opacity: 0.6;
   }
 
-  .codes-column .item input[type="checkbox"] {
+  .radio-group {
+    display: flex;
+    gap: var(--spacing-sm);
+    align-items: center;
+    font-size: 0.75rem;
+    font-weight: normal;
+  }
+
+  .radio-label {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    cursor: pointer;
+  }
+
+  .radio-label input[type="radio"] {
     margin: 0;
-    flex-shrink: 0;
   }
 
   .codes-column .item .code-text {
     flex: 1;
     text-align: center;
+    font-size: var(--font-size-sm);
   }
 
   .item:hover {
