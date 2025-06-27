@@ -1,6 +1,6 @@
+// @ts-check
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import stripAnsi from "strip-ansi";
 import { glob } from "tinyglobby";
 
 const TS_REPO_DIR = process.env.TS_REPO_DIR ?? "../TypeScript";
@@ -163,16 +163,11 @@ function errorsTextPathToTestId(errorsTextPath: string): string {
 function extractErrorCodes(errorsText: string): Set<number> {
   const errorDiagnosticsCodes = new Set<number>();
 
-  for (const line of stripAnsi(errorsText).split("\r\n")) {
-    const [, codePart] = line.split("error TS");
-    if (codePart) {
-      const [code] = codePart.split(":");
-      if (code) {
-        // These are inlined error codes, just skip them
-        if (["-1", "0", "9999"].includes(code)) continue;
-        errorDiagnosticsCodes.add(Number(code));
-      }
-    }
+  // @ts-expect-error: `v` flag
+  const matches = errorsText.matchAll(/error TS(?<code>\d{4,5}): /gv);
+  for (const match of matches) {
+    const code = match.groups?.code;
+    if (code) errorDiagnosticsCodes.add(Number(code));
   }
 
   return errorDiagnosticsCodes;

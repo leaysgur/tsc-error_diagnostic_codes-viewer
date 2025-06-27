@@ -5,9 +5,9 @@
 ## Development
 
 ```sh
-bun i
+npm i
 
-DEBUG=1 TS_REPO_DIR=../TypeScript OUTPUT_DIR=./src/lib bun ./init.ts
+DEBUG=1 TS_REPO_DIR=../TypeScript OUTPUT_DIR=./src/lib node --experimental-strip-types init.ts
 
-TS_REPO_DIR=../TypeScript bun dev
+TS_REPO_DIR=../TypeScript npm run dev
 ```
