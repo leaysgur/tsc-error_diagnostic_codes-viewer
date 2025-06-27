@@ -54,7 +54,10 @@ for (const testPath of allTestPaths) {
   // These are "Expect to parse" cases
   if (!errorsTextPaths) continue;
 
-  for (const errorsTextPath of errorsTextPaths) targetErrorsTextPaths.add(errorsTextPath);
+  for (const errorsTextPath of errorsTextPaths) {
+    if (!isTargetErrorsTextPath(errorsTextPath)) continue;
+    targetErrorsTextPaths.add(errorsTextPath);
+  }
 }
 console.log(`Found ${targetErrorsTextPaths.size} \`.errors.txt\` files to be checked.`);
 
@@ -148,6 +151,21 @@ function errorsTextPathToTestId(errorsTextPath: string): string {
   const [testIdPart] = basename.split(".errors.txt");
   const [testId] = testIdPart.split("(");
   return testId;
+}
+
+/**
+ * If path contains variations, we want to keep specific variations only.
+ * module, target, jsx, experimentaldecorators
+ * These are the same as OXC's typescript coverage tests.
+ */
+function isTargetErrorsTextPath(errorsTextPath: string) {
+  const hasVariations = errorsTextPath.endsWith(").errors.txt");
+  if (!hasVariations) return true;
+
+  const supportedVariant = ["module=", "target=", "jsx=", "experimentaldecorators="];
+  if (supportedVariant.some((option) => errorsTextPath.includes(option))) return true;
+
+  return false;
 }
 
 /**
