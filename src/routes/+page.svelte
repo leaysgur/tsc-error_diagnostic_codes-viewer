@@ -8,13 +8,16 @@
   let selectedFilePath = $state("");
 
   let reviewedCodes = $state(new Map<string, "yes" | "no">());
+  let noMarkedCodesData = $state<Promise<string>>(Promise.resolve(""));
+  let dialogRef: HTMLDialogElement;
 
   // Load reviewed codes from localStorage
   $effect(() => {
     if (!browser) return;
     const saved = localStorage.getItem("reviewed-codes");
     if (!saved) return;
-    reviewedCodes = new Map(JSON.parse(saved));
+    const parsedData = JSON.parse(saved);
+    reviewedCodes = new Map(parsedData);
   });
 
   // Group codes by 1000s
@@ -53,7 +56,8 @@
   function setReviewStatus(code: string, status: "yes" | "no") {
     reviewedCodes.set(code, status);
     reviewedCodes = new Map(reviewedCodes); // Trigger reactivity
-    localStorage.setItem("reviewed-codes", JSON.stringify([...reviewedCodes]));
+    const dataToStore = [...reviewedCodes];
+    localStorage.setItem("reviewed-codes", JSON.stringify(dataToStore));
   }
 
   // Sort codes: unreviewed first, then reviewed
@@ -92,11 +96,35 @@
   function handleFileHover(filePath: string) {
     selectedFilePath = filePath;
   }
+
+  // Function to open dialog and load data
+  function openNoCodesDialog() {
+    dialogRef.showModal();
+
+    const reviewedCodesArray = Array.from(reviewedCodes.entries());
+
+    noMarkedCodesData = fetch("/api/no-marked-codes", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reviewedCodes: reviewedCodesArray }),
+    }).then((r) => r.text());
+  }
 </script>
+
+<dialog class="no-codes-dialog" bind:this={dialogRef}>
+  <div class="dialog-content">
+    {#await noMarkedCodesData}
+      <p>Loading N-marked codes...</p>
+    {:then data}
+      <pre class="error-list">{data}</pre>
+    {/await}
+  </div>
+</dialog>
 
 <header class="header">
   <h1>TSC Error Diagnostic Codes Viewer</h1>
   <p>Browse error codes extracted from TypeScript `compiler` and `conformance` tests</p>
+  <button onclick={openNoCodesDialog}>View Non-supported Codes</button>
 </header>
 
 <div class="container">
@@ -255,6 +283,9 @@
     border-bottom: 1px solid var(--border-color);
     padding: var(--spacing-xs) var(--spacing-md);
     text-align: left;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
   }
 
   .header h1 {
@@ -270,6 +301,17 @@
     font-size: 0.8rem;
     display: inline;
     margin-left: var(--spacing-sm);
+  }
+
+  .header button {
+    background-color: var(--accent-blue);
+    color: var(--text-primary);
+    border: none;
+    padding: var(--spacing-xs) var(--spacing-sm);
+    border-radius: var(--border-radius);
+    cursor: pointer;
+    font-size: 0.8rem;
+    margin-left: var(--spacing-md);
   }
 
   .container {
@@ -392,5 +434,42 @@
     font-size: var(--font-size-sm);
     line-height: var(--line-height-base);
     color: var(--text-primary);
+  }
+
+  .no-codes-dialog {
+    background-color: var(--bg-secondary);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    padding: 0;
+    max-width: 90vw;
+    max-height: 80vh;
+    margin: auto;
+    font-family: var(--font-mono);
+    overflow: auto;
+  }
+
+  .no-codes-dialog::backdrop {
+    background-color: rgba(0, 0, 0, 0.5);
+  }
+
+  .dialog-content {
+    padding: var(--spacing-md);
+  }
+
+  .error-list {
+    margin: 0;
+    padding: var(--spacing-sm);
+    background-color: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    color: var(--text-primary);
+    font-size: var(--font-size-sm);
+    line-height: var(--line-height-base);
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    max-width: 100%;
+    box-sizing: border-box;
   }
 </style>
